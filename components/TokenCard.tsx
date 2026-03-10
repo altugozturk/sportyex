@@ -4,7 +4,6 @@ import { getClubIdentity } from "@/lib/crests";
 import SignalBadge from "./SignalBadge";
 import MatchBadge from "./MatchBadge";
 import CrestIcon from "./CrestIcon";
-import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface Props {
   token: FanToken;
@@ -15,19 +14,20 @@ function PriceChange({ value }: { value: number }) {
   const positive = value >= 0;
   return (
     <span
-      className="inline-flex items-center gap-0.5 text-[13px] font-bold tabular-nums"
-      style={{ color: positive ? "var(--accent-bull)" : "var(--accent-bear)" }}
+      className="text-[12px] font-bold tabular-nums"
+      style={{
+        color: positive ? "var(--accent-bull)" : "var(--accent-bear)",
+        fontFamily: "var(--font-mono)",
+      }}
     >
-      {positive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-      {positive ? "+" : ""}
-      {value.toFixed(2)}%
+      {positive ? "+" : ""}{value.toFixed(2)}%
     </span>
   );
 }
 
 export default function TokenCard({ token, rank }: Props) {
   const identity = getClubIdentity(token.id);
-  const leagueCode = identity?.leagueCode;
+  const clubColor = identity?.primary ?? "rgba(255,255,255,0.1)";
 
   const barColor =
     token.signalScore >= 70
@@ -36,110 +36,109 @@ export default function TokenCard({ token, rank }: Props) {
       ? "var(--accent-bear)"
       : "var(--accent-hot)";
 
-  const glowPx =
-    token.signalScore >= 75 ? 10 : token.signalScore >= 50 ? 6 : 3;
-
   return (
     <Link
       href={`/token/${token.id.toLowerCase()}`}
-      className="block rounded-xl p-3 transition-all hover:scale-[1.005] active:scale-[0.99]"
+      className="flex items-center gap-2.5 px-3 py-2.5 transition-colors group"
       style={{
-        background: "var(--card)",
-        border: "1px solid var(--card-border)",
+        borderLeft: `3px solid ${clubColor}`,
+        borderBottom: "1px solid var(--card-border)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "var(--card-hover)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "transparent";
       }}
     >
-      {/* Row 1: crest / name / league | price / change */}
-      <div className="flex items-center gap-2.5">
-        {/* Rank */}
-        {rank !== undefined && (
-          <span
-            className="text-[11px] font-bold tabular-nums shrink-0 w-4 text-right"
-            style={{ color: "rgba(255,255,255,0.2)" }}
-          >
-            {rank}
+      {/* Rank */}
+      {rank !== undefined && (
+        <span
+          className="text-[11px] tabular-nums shrink-0 w-5 text-right font-bold"
+          style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
+        >
+          {rank}
+        </span>
+      )}
+
+      {/* Crest */}
+      <CrestIcon tokenId={token.id} symbol={token.symbol} size={30} />
+
+      {/* Team + ticker */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 leading-none">
+          <span className="font-bold text-[14px] truncate" style={{ color: "var(--foreground)" }}>
+            {token.team}
           </span>
-        )}
-
-        {/* Crest */}
-        <CrestIcon tokenId={token.id} symbol={token.symbol} size={36} />
-
-        {/* Club info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 leading-tight">
-            <span className="font-black text-[15px] truncate leading-tight">
-              {token.team}
+          {identity?.leagueCode && (
+            <span
+              className="text-[8px] font-black uppercase px-1 py-px rounded shrink-0 tracking-wider"
+              style={{
+                color: clubColor,
+                background: `${clubColor}18`,
+                border: `1px solid ${clubColor}28`,
+              }}
+            >
+              {identity.leagueCode}
             </span>
-            {leagueCode && (
-              <span
-                className="text-[9px] font-black uppercase px-1 py-px rounded shrink-0"
-                style={{
-                  color: identity?.primary ?? "rgba(255,255,255,0.4)",
-                  background: `${identity?.primary ?? "#ffffff"}20`,
-                  border: `1px solid ${identity?.primary ?? "#ffffff"}30`,
-                }}
-              >
-                {leagueCode}
-              </span>
-            )}
-          </div>
-          <span
-            className="text-[11px] font-medium"
-            style={{ color: "rgba(255,255,255,0.3)" }}
-          >
-            {token.symbol}
-          </span>
+          )}
         </div>
-
-        {/* Price block */}
-        <div className="text-right shrink-0">
-          <p
-            className="font-black tabular-nums text-[15px] leading-tight"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            ${token.price.toFixed(2)}
-          </p>
-          <PriceChange value={token.priceChange24h} />
-        </div>
+        <span
+          className="text-[11px] font-medium tracking-wider"
+          style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}
+        >
+          {token.symbol}
+        </span>
       </div>
 
-      {/* Row 2: signal badges */}
-      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-        <SignalBadge level={token.signalLevel} />
+      {/* Signal + match badges */}
+      <div className="hidden sm:flex items-center gap-1 shrink-0">
+        <SignalBadge level={token.signalLevel} compact />
         {token.upcomingMatch && <MatchBadge match={token.upcomingMatch} />}
         {token.whaleAlert && (
           <span
-            className="text-[11px] px-1.5 py-px rounded-full font-semibold"
+            className="text-[10px] px-1.5 py-px rounded font-bold tracking-wide"
             style={{
-              color:
-                token.whaleAlert.direction === "buy"
-                  ? "var(--accent-bull)"
-                  : "var(--accent-bear)",
-              background:
-                token.whaleAlert.direction === "buy"
-                  ? "rgba(0,255,135,0.08)"
-                  : "rgba(255,59,92,0.08)",
+              color: token.whaleAlert.direction === "buy" ? "var(--accent-bull)" : "var(--accent-bear)",
+              background: token.whaleAlert.direction === "buy" ? "rgba(0,230,118,0.08)" : "rgba(255,59,92,0.08)",
+              border: `1px solid ${token.whaleAlert.direction === "buy" ? "rgba(0,230,118,0.2)" : "rgba(255,59,92,0.2)"}`,
             }}
           >
-            🐋 Whale
+            🐋
           </span>
         )}
       </div>
 
-      {/* Signal bar with glow */}
-      <div className="mt-2.5">
-        <div
-          className="h-1.5 rounded-full"
-          style={{ background: "rgba(255,255,255,0.06)" }}
-        >
+      {/* Score bar */}
+      <div className="hidden sm:block shrink-0 w-14">
+        <div className="h-[3px] rounded-full" style={{ background: "rgba(255,255,255,0.07)" }}>
           <div
             className="h-full rounded-full"
             style={{
               width: `${token.signalScore}%`,
               background: barColor,
-              boxShadow: `0 0 ${glowPx}px ${barColor}70`,
               transition: "width 0.6s ease",
             }}
           />
+        </div>
+        <p
+          className="text-[9px] tabular-nums mt-0.5 text-right"
+          style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}
+        >
+          {token.signalScore}
+        </p>
+      </div>
+
+      {/* Price + change */}
+      <div className="text-right shrink-0 ml-1">
+        <p
+          className="font-black tabular-nums text-[14px] leading-none"
+          style={{ color: "var(--foreground)", fontFamily: "var(--font-mono)" }}
+        >
+          ${token.price.toFixed(2)}
+        </p>
+        <div className="mt-0.5">
+          <PriceChange value={token.priceChange24h} />
         </div>
       </div>
     </Link>

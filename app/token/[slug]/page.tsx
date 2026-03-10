@@ -34,41 +34,51 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
   const identity = getClubIdentity(token.id);
 
   return (
-    <div className="pt-6 max-w-lg mx-auto">
+    <div className="pt-5 max-w-lg mx-auto">
       {/* Back */}
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-[11px] mb-3 transition-opacity hover:opacity-70"
-        style={{ color: "rgba(255,255,255,0.45)" }}
+        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest mb-3 transition-opacity hover:opacity-70"
+        style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}
       >
-        <ArrowLeft size={13} /> All tokens
+        <ArrowLeft size={11} /> All tokens
       </Link>
 
       {/* Hero */}
       <div
-        className="rounded-xl p-4 mb-4"
+        className="rounded-lg p-4 mb-3"
         style={{
           background: "var(--card)",
           border: "1px solid var(--card-border)",
-          borderTop: identity ? `2px solid ${identity.primary}` : "1px solid var(--card-border)",
+          borderLeft: identity ? `3px solid ${identity.primary}` : "1px solid var(--card-border)",
         }}
       >
         <div className="flex items-start justify-between gap-4">
           {/* Token identity */}
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <CrestIcon tokenId={token.id} symbol={token.symbol} size={48} />
+            <div className="flex items-center gap-2.5 mb-2.5">
+              <CrestIcon tokenId={token.id} symbol={token.symbol} size={44} />
               <div>
-                <h1 className="font-black text-xl leading-tight">{token.team}</h1>
+                <h1
+                  className="font-black text-lg leading-tight tracking-tight"
+                  style={{ letterSpacing: "-0.01em" }}
+                >
+                  {token.team}
+                </h1>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{token.symbol}</p>
+                  <p
+                    className="text-[11px] font-bold tracking-wider"
+                    style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}
+                  >
+                    {token.symbol}
+                  </p>
                   {identity?.leagueCode && (
                     <span
-                      className="text-[9px] font-black uppercase px-1 py-px rounded"
+                      className="text-[8px] font-black uppercase px-1 py-px rounded tracking-wider"
                       style={{
                         color: identity.primary,
-                        background: `${identity.primary}20`,
-                        border: `1px solid ${identity.primary}30`,
+                        background: `${identity.primary}18`,
+                        border: `1px solid ${identity.primary}28`,
                       }}
                     >
                       {identity.leagueCode}
@@ -89,14 +99,25 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
 
         {/* Price */}
         <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--card-border)" }}>
-          <p className="text-2xl font-black tabular-nums">${token.price.toFixed(2)}</p>
-          <p className="flex items-center gap-1 mt-1 text-sm font-semibold tabular-nums" style={{ color: priceColor }}>
-            {positive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+          <p
+            className="text-2xl font-black tabular-nums leading-none"
+            style={{ fontFamily: "var(--font-mono)", color: "var(--foreground)" }}
+          >
+            ${token.price.toFixed(2)}
+          </p>
+          <p
+            className="flex items-center gap-1 mt-1.5 text-[13px] font-bold tabular-nums"
+            style={{ color: priceColor }}
+          >
+            {positive ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
             {positive ? "+" : ""}{token.priceChange24h.toFixed(2)}% today
           </p>
           {token.volume24h && (
-            <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>
-              Vol: ${(token.volume24h / 1_000).toFixed(0)}k · {token.exchange ?? "FanX"}
+            <p
+              className="text-[11px] mt-1.5"
+              style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}
+            >
+              Vol ${(token.volume24h / 1_000).toFixed(0)}k · {token.exchange ?? "FanX"}
             </p>
           )}
         </div>
