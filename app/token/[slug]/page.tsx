@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { getTokenDetail } from "@/lib/mcp";
+import { getClubIdentity } from "@/lib/crests";
 import SignalBadge from "@/components/SignalBadge";
 import SignalRing from "@/components/SignalRing";
 import SignalBreakdown from "@/components/SignalBreakdown";
 import EvidenceCard from "@/components/EvidenceCard";
+import CrestIcon from "@/components/CrestIcon";
 import ShareButton from "@/components/ShareButton";
 import { TrendingUp, TrendingDown, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -28,6 +30,7 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
 
   const positive = token.priceChange24h >= 0;
   const priceColor = positive ? "var(--accent-bull)" : "var(--accent-bear)";
+  const identity = getClubIdentity(token.id);
 
   return (
     <div className="pt-6 max-w-lg mx-auto">
@@ -48,16 +51,25 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
         <div className="flex items-start justify-between gap-4">
           {/* Token identity */}
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-black"
-                style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}
-              >
-                {token.symbol.slice(0, 3)}
-              </div>
+            <div className="flex items-center gap-3 mb-2">
+              <CrestIcon tokenId={token.id} symbol={token.symbol} size={48} />
               <div>
                 <h1 className="font-black text-xl leading-tight">{token.team}</h1>
-                <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{token.symbol}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{token.symbol}</p>
+                  {identity?.leagueCode && (
+                    <span
+                      className="text-[9px] font-black uppercase px-1 py-px rounded"
+                      style={{
+                        color: identity.primary,
+                        background: `${identity.primary}20`,
+                        border: `1px solid ${identity.primary}30`,
+                      }}
+                    >
+                      {identity.leagueCode}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <SignalBadge level={token.signalLevel} />

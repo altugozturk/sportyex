@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="32" fill="#004170"/>
+  <path d="M32,0 A32,32 0 0,1 64,32 L32,32 Z" fill="#DA291C" opacity="0.85"/>
+  <circle cx="32" cy="32" r="22" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+  <text x="32" y="36" font-family="Arial Black,Arial,sans-serif" font-size="13" font-weight="900" fill="white" text-anchor="middle" letter-spacing="0.5">PSG</text>
+</svg>

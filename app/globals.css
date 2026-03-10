@@ -9,6 +9,7 @@
   --accent-bear: #ff3b5c;
   --accent-hot: #ff9500;
   --accent-muted: rgba(255, 255, 255, 0.4);
+  --font-mono: ui-monospace, "SF Mono", "Fira Code", Consolas, monospace;
 }
 
 @theme inline {

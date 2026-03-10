@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { FanToken } from "@/lib/types";
+import { getClubIdentity } from "@/lib/crests";
 import SignalBadge from "./SignalBadge";
 import MatchBadge from "./MatchBadge";
+import CrestIcon from "./CrestIcon";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface Props {
@@ -13,10 +15,10 @@ function PriceChange({ value }: { value: number }) {
   const positive = value >= 0;
   return (
     <span
-      className="inline-flex items-center gap-0.5 text-sm font-semibold tabular-nums"
+      className="inline-flex items-center gap-0.5 text-[13px] font-bold tabular-nums"
       style={{ color: positive ? "var(--accent-bull)" : "var(--accent-bear)" }}
     >
-      {positive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+      {positive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
       {positive ? "+" : ""}
       {value.toFixed(2)}%
     </span>
@@ -24,54 +26,98 @@ function PriceChange({ value }: { value: number }) {
 }
 
 export default function TokenCard({ token, rank }: Props) {
+  const identity = getClubIdentity(token.id);
+  const leagueCode = identity?.leagueCode;
+
+  const barColor =
+    token.signalScore >= 70
+      ? "var(--accent-bull)"
+      : token.signalScore < 35
+      ? "var(--accent-bear)"
+      : "var(--accent-hot)";
+
+  const glowPx =
+    token.signalScore >= 75 ? 10 : token.signalScore >= 50 ? 6 : 3;
+
   return (
     <Link
       href={`/token/${token.id.toLowerCase()}`}
-      className="block rounded-xl p-4 transition-all hover:scale-[1.01] hover:border-white/20 active:scale-[0.99]"
+      className="block rounded-xl p-3 transition-all hover:scale-[1.005] active:scale-[0.99]"
       style={{
         background: "var(--card)",
         border: "1px solid var(--card-border)",
       }}
     >
-      <div className="flex items-start justify-between gap-3">
-        {/* Left: logo + name */}
-        <div className="flex items-center gap-3 min-w-0">
-          {rank && (
-            <span className="text-xs font-bold tabular-nums shrink-0" style={{ color: "rgba(255,255,255,0.25)", minWidth: "1.5rem" }}>
-              #{rank}
-            </span>
-          )}
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black shrink-0"
-            style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}
+      {/* Row 1: crest / name / league | price / change */}
+      <div className="flex items-center gap-2.5">
+        {/* Rank */}
+        {rank !== undefined && (
+          <span
+            className="text-[11px] font-bold tabular-nums shrink-0 w-4 text-right"
+            style={{ color: "rgba(255,255,255,0.2)" }}
           >
-            {token.symbol.slice(0, 3)}
+            {rank}
+          </span>
+        )}
+
+        {/* Crest */}
+        <CrestIcon tokenId={token.id} symbol={token.symbol} size={36} />
+
+        {/* Club info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 leading-tight">
+            <span className="font-black text-[15px] truncate leading-tight">
+              {token.team}
+            </span>
+            {leagueCode && (
+              <span
+                className="text-[9px] font-black uppercase px-1 py-px rounded shrink-0"
+                style={{
+                  color: identity?.primary ?? "rgba(255,255,255,0.4)",
+                  background: `${identity?.primary ?? "#ffffff"}20`,
+                  border: `1px solid ${identity?.primary ?? "#ffffff"}30`,
+                }}
+              >
+                {leagueCode}
+              </span>
+            )}
           </div>
-          <div className="min-w-0">
-            <p className="font-bold text-sm leading-tight truncate">{token.team}</p>
-            <p className="text-xs leading-tight truncate" style={{ color: "rgba(255,255,255,0.4)" }}>
-              {token.symbol}
-            </p>
-          </div>
+          <span
+            className="text-[11px] font-medium"
+            style={{ color: "rgba(255,255,255,0.3)" }}
+          >
+            {token.symbol}
+          </span>
         </div>
 
-        {/* Right: price + signal */}
+        {/* Price block */}
         <div className="text-right shrink-0">
-          <p className="font-bold tabular-nums text-sm">${token.price.toFixed(2)}</p>
+          <p
+            className="font-black tabular-nums text-[15px] leading-tight"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            ${token.price.toFixed(2)}
+          </p>
           <PriceChange value={token.priceChange24h} />
         </div>
       </div>
 
-      {/* Badges */}
-      <div className="flex items-center gap-2 mt-3 flex-wrap">
+      {/* Row 2: signal badges */}
+      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         <SignalBadge level={token.signalLevel} />
         {token.upcomingMatch && <MatchBadge match={token.upcomingMatch} />}
         {token.whaleAlert && (
           <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium"
+            className="text-[11px] px-1.5 py-px rounded-full font-semibold"
             style={{
-              color: token.whaleAlert.direction === "buy" ? "var(--accent-bull)" : "var(--accent-bear)",
-              background: token.whaleAlert.direction === "buy" ? "rgba(0,255,135,0.08)" : "rgba(255,59,92,0.08)",
+              color:
+                token.whaleAlert.direction === "buy"
+                  ? "var(--accent-bull)"
+                  : "var(--accent-bear)",
+              background:
+                token.whaleAlert.direction === "buy"
+                  ? "rgba(0,255,135,0.08)"
+                  : "rgba(255,59,92,0.08)",
             }}
           >
             🐋 Whale
@@ -79,18 +125,19 @@ export default function TokenCard({ token, rank }: Props) {
         )}
       </div>
 
-      {/* Signal score bar */}
-      <div className="mt-3">
-        <div className="h-1 rounded-full" style={{ background: "rgba(255,255,255,0.07)" }}>
+      {/* Signal bar with glow */}
+      <div className="mt-2.5">
+        <div
+          className="h-1.5 rounded-full"
+          style={{ background: "rgba(255,255,255,0.06)" }}
+        >
           <div
-            className="h-full rounded-full transition-all"
+            className="h-full rounded-full"
             style={{
               width: `${token.signalScore}%`,
-              background: token.signalScore >= 70
-                ? "var(--accent-bull)"
-                : token.signalScore < 35
-                ? "var(--accent-bear)"
-                : "var(--accent-hot)",
+              background: barColor,
+              boxShadow: `0 0 ${glowPx}px ${barColor}70`,
+              transition: "width 0.6s ease",
             }}
           />
         </div>
