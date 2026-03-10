@@ -10,6 +10,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { FanToken, TokenDetail, SignalLevel, WhaleAlert, UpcomingMatch } from "./types";
 
 const MCP_URL = process.env.FAN_TOKEN_MCP_URL || "https://mcp-production-f681.up.railway.app/sse";
+const API_KEY = process.env.FAN_TOKEN_INTEL_API_KEY;
 
 let _client: Client | null = null;
 let _toolNames: string[] = [];
@@ -21,7 +22,14 @@ async function getClient(): Promise<Client> {
 
   if (_client) return _client;
 
-  const transport = new SSEClientTransport(new URL(MCP_URL));
+  const headers: Record<string, string> = API_KEY
+    ? { Authorization: `Bearer ${API_KEY}` }
+    : {};
+
+  const transport = new SSEClientTransport(new URL(MCP_URL), {
+    requestInit: { headers },
+    eventSourceInit: { headers } as EventSourceInit,
+  });
   const client = new Client({ name: "sportyex", version: "1.0.0" });
 
   await client.connect(transport);
@@ -73,6 +81,7 @@ export async function getTopTokens(): Promise<FanToken[]> {
   try {
     const available = await getAvailableTools();
     const toolName = findTool(available, [
+      "realtime_prices", "daily_brief", "briefing", "market_regime",
       "fan_token", "token_list", "get_tokens", "market_data", "all_token", "list_token",
     ]);
 
@@ -94,6 +103,7 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
     const available = await getAvailableTools();
 
     const detailTool = findTool(available, [
+      "token_context", "analytics", "signals_history", "signal_bundle",
       "token_detail", "token_info", "get_fan_token", "token_data",
     ]);
 
@@ -133,6 +143,7 @@ export async function getWeeklyMovers(): Promise<FanToken[]> {
   try {
     const available = await getAvailableTools();
     const toolName = findTool(available, [
+      "realtime_prices", "accumulation_signals", "signals_active",
       "weekly", "mover", "top_performer", "price_change", "gainers",
     ]);
     if (!toolName) return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
