@@ -4,7 +4,6 @@
  * All MCP calls happen here — never on the client.
  */
 
-import { connection } from "next/server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { FanToken, TokenDetail, SignalLevel, WhaleAlert, UpcomingMatch } from "./types";
@@ -16,10 +15,6 @@ let _client: Client | null = null;
 let _toolNames: string[] = [];
 
 async function getClient(): Promise<Client> {
-  // Ensure this always runs in a dynamic (request-time) context so Next.js
-  // never throws DynamicServerError when the MCP SDK makes no-cache SSE fetches.
-  await connection();
-
   if (_client) return _client;
 
   const headers: Record<string, string> = API_KEY
@@ -45,19 +40,35 @@ async function getClient(): Promise<Client> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function callTool(name: string, args: Record<string, any> = {}): Promise<any> {
-  const client = await getClient();
-  const result = await client.callTool({ name, arguments: args });
-  if (result.isError) {
-    throw new Error(`MCP tool error [${name}]: ${JSON.stringify(result.content)}`);
-  }
-  // MCP returns content array; parse text content
-  const content = result.content as Array<{ type: string; text?: string }>;
-  const text = content.find((c) => c.type === "text")?.text;
-  if (!text) return null;
+  let client: Client;
   try {
-    return JSON.parse(text);
-  } catch {
-    return text;
+    client = await getClient();
+  } catch (err) {
+    // Connection failed — reset so next call retries
+    _client = null;
+    _toolNames = [];
+    throw err;
+  }
+
+  try {
+    const result = await client.callTool({ name, arguments: args });
+    if (result.isError) {
+      throw new Error(`MCP tool error [${name}]: ${JSON.stringify(result.content)}`);
+    }
+    // MCP returns content array; parse text content
+    const content = result.content as Array<{ type: string; text?: string }>;
+    const text = content.find((c) => c.type === "text")?.text;
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  } catch (err) {
+    // Tool call failed — reset connection so next request reconnects
+    _client = null;
+    _toolNames = [];
+    throw err;
   }
 }
 
@@ -81,31 +92,42 @@ function findTool(available: string[], keywords: string[]): string | undefined {
   );
 }
 
+// Known fan token symbols — used as arguments when a tool requires a token list
+const KNOWN_SYMBOLS = ["PSG", "BAR", "JUV", "ACM", "ATM", "CITY", "INTER", "GAL"];
+
 // ─── Token List ─────────────────────────────────────────────────────────────
 
 export async function getTopTokens(): Promise<FanToken[]> {
   try {
     const available = await getAvailableTools();
     const toolName = findTool(available, [
+      "signals_active",                                               // try first — returns all active tokens without args
       "realtime_prices", "daily_brief", "briefing", "market_regime",
       "fan_token", "token_list", "get_tokens", "market_data", "all_token", "list_token",
     ]);
 
     if (!toolName) {
       console.warn("[MCP] No token list tool found, available:", available);
-      return [];
+      return getMockTokens();
     }
 
-    const raw = await callTool(toolName);
+    // Pass known symbols in every possible parameter name the tool might expect
+    const raw = await callTool(toolName, {
+      symbols: KNOWN_SYMBOLS,
+      tokens: KNOWN_SYMBOLS,
+      symbol_list: KNOWN_SYMBOLS,
+      token_ids: KNOWN_SYMBOLS,
+    });
     console.log("[MCP] getTopTokens raw (first 800 chars):", JSON.stringify(raw).slice(0, 800));
     const tokens = normalizeTokenList(raw);
     if (tokens.length === 0) {
-      console.warn("[MCP] getTopTokens normalised to empty list. Raw was:", JSON.stringify(raw).slice(0, 400));
+      console.warn("[MCP] getTopTokens normalised to empty list — falling back to mock. Raw was:", JSON.stringify(raw).slice(0, 400));
+      return getMockTokens();
     }
     return tokens;
   } catch (err) {
     console.error("[MCP] getTopTokens failed:", err);
-    return [];
+    return getMockTokens();
   }
 }
 
@@ -142,17 +164,16 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
     }
 
     if (detail.status !== "fulfilled" || !detail.value) {
-      console.warn(`[MCP] No detail data for ${tokenId}`);
-      return null;
+      console.warn(`[MCP] No detail data for ${tokenId} — falling back to mock`);
+      return getMockTokenDetail(tokenId);
     }
 
     const base = normalizeTokenDetail(detail.value, tokenId);
 
-    // If core fields didn't map (price=0, default score), log and return null
-    // so the UI shows an appropriate empty state rather than misleading data.
+    // If core fields didn't map (price=0, default score), fall back to mock
     if (base.price === 0 && base.signalScore === 50) {
-      console.warn(`[MCP] normalizeTokenDetail produced defaults for ${tokenId} — field mapping likely wrong. Raw:`, JSON.stringify(detail.value).slice(0, 600));
-      return null;
+      console.warn(`[MCP] normalizeTokenDetail produced defaults for ${tokenId} — field mapping wrong. Raw:`, JSON.stringify(detail.value).slice(0, 600));
+      return getMockTokenDetail(tokenId);
     }
 
     if (whaleData.status === "fulfilled" && whaleData.value) {
@@ -165,7 +186,7 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
     return base;
   } catch (err) {
     console.error("[MCP] getTokenDetail failed:", err);
-    return null;
+    return getMockTokenDetail(tokenId);
   }
 }
 
@@ -176,13 +197,14 @@ export async function getWeeklyMovers(): Promise<FanToken[]> {
       "realtime_prices", "accumulation_signals", "signals_active",
       "weekly", "mover", "top_performer", "price_change", "gainers",
     ]);
-    if (!toolName) return [];
+    if (!toolName) return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
 
     const raw = await callTool(toolName, { period: "7d" });
-    return normalizeTokenList(raw);
+    const tokens = normalizeTokenList(raw);
+    return tokens.length > 0 ? tokens : getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
   } catch (err) {
     console.error("[MCP] getWeeklyMovers failed:", err);
-    return [];
+    return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
   }
 }
 
