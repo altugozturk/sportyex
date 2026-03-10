@@ -3,7 +3,7 @@ import { getTokenDetail } from "@/lib/mcp";
 import SignalBadge from "@/components/SignalBadge";
 import SignalRing from "@/components/SignalRing";
 import SignalBreakdown from "@/components/SignalBreakdown";
-import VoteStrip from "@/components/VoteStrip";
+import EvidenceCard from "@/components/EvidenceCard";
 import ShareButton from "@/components/ShareButton";
 import { TrendingUp, TrendingDown, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -85,8 +85,8 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
       {/* Signal breakdown */}
       <SignalBreakdown token={token} />
 
-      {/* Community vote */}
-      <VoteStrip tokenId={token.id} />
+      {/* Evidence */}
+      <EvidenceCard token={token} />
 
       {/* Share */}
       <ShareButton symbol={token.symbol} />
