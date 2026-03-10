@@ -14,7 +14,7 @@ export default function CrestIcon({ tokenId, symbol, size = 40 }: Props) {
   const identity = getClubIdentity(tokenId);
   const initials = symbol.slice(0, 3).toUpperCase();
   const clubColor = identity?.primary ?? "#1e1e3a";
-  const id = tokenId.toLowerCase();
+  const id = tokenId.toUpperCase();
 
   const ringStyle = {
     width: size,
