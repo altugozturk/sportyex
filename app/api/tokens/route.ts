@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getTopTokens } from "@/lib/mcp";
 
-export const revalidate = 300; // 5 min ISR
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {

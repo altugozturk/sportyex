@@ -4,7 +4,7 @@ import SignalBadge from "@/components/SignalBadge";
 import { TrendingUp, TrendingDown, Trophy, Waves } from "lucide-react";
 import type { Metadata } from "next";
 
-export const revalidate = 600;
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: "Weekly Scoreboard | Sportyex",

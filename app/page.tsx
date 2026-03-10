@@ -2,7 +2,7 @@ import { getTopTokens } from "@/lib/mcp";
 import TokenCard from "@/components/TokenCard";
 import { Zap } from "lucide-react";
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const tokens = await getTopTokens();

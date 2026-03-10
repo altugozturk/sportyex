@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getTokenDetail, getTopTokens } from "@/lib/mcp";
+import { getTokenDetail } from "@/lib/mcp";
 import SignalBadge from "@/components/SignalBadge";
 import SignalRing from "@/components/SignalRing";
 import WhaleAlertCard from "@/components/WhaleAlert";
@@ -10,12 +10,7 @@ import { TrendingUp, TrendingDown, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
-export const revalidate = 120;
-
-export async function generateStaticParams() {
-  const tokens = await getTopTokens();
-  return tokens.map((t) => ({ slug: t.id.toLowerCase() }));
-}
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
