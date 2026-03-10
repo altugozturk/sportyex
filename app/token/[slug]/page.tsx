@@ -2,8 +2,7 @@ import { notFound } from "next/navigation";
 import { getTokenDetail } from "@/lib/mcp";
 import SignalBadge from "@/components/SignalBadge";
 import SignalRing from "@/components/SignalRing";
-import WhaleAlertCard from "@/components/WhaleAlert";
-import MatchContext from "@/components/MatchContext";
+import SignalBreakdown from "@/components/SignalBreakdown";
 import VoteStrip from "@/components/VoteStrip";
 import ShareButton from "@/components/ShareButton";
 import { TrendingUp, TrendingDown, ArrowLeft } from "lucide-react";
@@ -83,46 +82,8 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
         </div>
       </div>
 
-      {/* Why it&apos;s moving */}
-      <h2 className="text-xs font-semibold uppercase tracking-widest mb-3 px-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-        Why it&apos;s moving
-      </h2>
-
-      <div className="flex flex-col gap-3 mb-4">
-        {token.whaleAlert && <WhaleAlertCard alert={token.whaleAlert} />}
-        {token.upcomingMatch && <MatchContext match={token.upcomingMatch} />}
-
-        {/* Sentiment card */}
-        {token.sentimentScore !== undefined && (
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "var(--card)", border: "1px solid var(--card-border)" }}
-          >
-            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>
-              Market Sentiment
-            </p>
-            <div className="flex justify-between text-xs font-semibold mb-2">
-              <span style={{ color: "var(--accent-bull)" }}>Bullish {token.sentimentScore}%</span>
-              <span style={{ color: "var(--accent-bear)" }}>Bearish {100 - token.sentimentScore}%</span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,59,92,0.25)" }}>
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${token.sentimentScore}%`, background: "var(--accent-bull)" }}
-              />
-            </div>
-          </div>
-        )}
-
-        {!token.whaleAlert && !token.upcomingMatch && !token.sentimentScore && (
-          <div
-            className="rounded-xl p-4 text-center text-sm"
-            style={{ color: "rgba(255,255,255,0.3)", background: "var(--card)", border: "1px solid var(--card-border)" }}
-          >
-            No active signals at this time.
-          </div>
-        )}
-      </div>
+      {/* Signal breakdown */}
+      <SignalBreakdown token={token} />
 
       {/* Community vote */}
       <VoteStrip tokenId={token.id} />
