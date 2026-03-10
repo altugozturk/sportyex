@@ -10,65 +10,89 @@ import { FanToken, TokenDetail, SignalLevel, WhaleAlert, UpcomingMatch } from ".
 
 const MCP_URL = process.env.FAN_TOKEN_MCP_URL || "https://mcp-production-f681.up.railway.app/sse";
 const API_KEY = process.env.FAN_TOKEN_INTEL_API_KEY;
+const MAX_CONNECTION_AGE_MS = 4 * 60 * 1000; // 4 minutes — under ISR windows
 
 let _client: Client | null = null;
 let _toolNames: string[] = [];
+let _connectedAt = 0;
+
+function resetClient() {
+  _client = null;
+  _toolNames = [];
+  _connectedAt = 0;
+}
 
 async function getClient(): Promise<Client> {
-  if (_client) return _client;
+  // Return cached client if still fresh
+  if (_client && Date.now() - _connectedAt < MAX_CONNECTION_AGE_MS) {
+    return _client;
+  }
+  if (_client) {
+    console.log("[MCP] Connection stale, reconnecting...");
+    resetClient();
+  }
+
+  const url = new URL(MCP_URL);
+  console.log("[MCP] Connecting to:", url.toString());
 
   const headers: Record<string, string> = API_KEY
     ? { Authorization: `Bearer ${API_KEY}` }
     : {};
 
-  const transport = new SSEClientTransport(new URL(MCP_URL), {
+  const transport = new SSEClientTransport(url, {
     requestInit: { headers },
     eventSourceInit: { headers } as EventSourceInit,
   });
   const client = new Client({ name: "sportyex", version: "1.0.0" });
 
-  await client.connect(transport);
+  try {
+    await client.connect(transport);
+  } catch (err) {
+    console.error("[MCP] Connection failed:", err);
+    throw new Error(`MCP connection failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  try {
+    const toolsResult = await client.listTools();
+    _toolNames = toolsResult.tools.map((t) => t.name);
+    console.log("[MCP] Connected. Available tools:", _toolNames);
+  } catch (err) {
+    console.error("[MCP] listTools failed:", err);
+    throw new Error(`MCP listTools failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   _client = client;
-
-  // Cache available tool names
-  const toolsResult = await client.listTools();
-  _toolNames = toolsResult.tools.map((t) => t.name);
-  console.log("[MCP] Connected. Available tools:", _toolNames);
-
+  _connectedAt = Date.now();
   return client;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function callTool(name: string, args: Record<string, any> = {}): Promise<any> {
-  let client: Client;
-  try {
-    client = await getClient();
-  } catch (err) {
-    // Connection failed — reset so next call retries
-    _client = null;
-    _toolNames = [];
-    throw err;
+function parseToolResult(result: any): any {
+  if (result.isError) {
+    throw new Error(`MCP tool error: ${JSON.stringify(result.content)}`);
   }
-
+  const content = result.content as Array<{ type: string; text?: string }>;
+  const text = content.find((c) => c.type === "text")?.text;
+  if (!text) return null;
   try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function callTool(name: string, args: Record<string, any> = {}): Promise<any> {
+  try {
+    const client = await getClient();
     const result = await client.callTool({ name, arguments: args });
-    if (result.isError) {
-      throw new Error(`MCP tool error [${name}]: ${JSON.stringify(result.content)}`);
-    }
-    // MCP returns content array; parse text content
-    const content = result.content as Array<{ type: string; text?: string }>;
-    const text = content.find((c) => c.type === "text")?.text;
-    if (!text) return null;
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
+    return parseToolResult(result);
   } catch (err) {
-    // Tool call failed — reset connection so next request reconnects
-    _client = null;
-    _toolNames = [];
-    throw err;
+    console.warn(`[MCP] callTool("${name}") failed, resetting client and retrying:`, err);
+    resetClient();
+    const client = await getClient();
+    const result = await client.callTool({ name, arguments: args });
+    return parseToolResult(result);
   }
 }
 
@@ -121,12 +145,13 @@ export async function getTopTokens(): Promise<FanToken[]> {
     console.log("[MCP] getTopTokens raw (first 800 chars):", JSON.stringify(raw).slice(0, 800));
     const tokens = normalizeTokenList(raw);
     if (tokens.length === 0) {
-      console.warn("[MCP] getTopTokens normalised to empty list — falling back to mock. Raw was:", JSON.stringify(raw).slice(0, 400));
+      console.warn("[MCP] getTopTokens normalised to empty list — falling back to MOCK data. Raw was:", JSON.stringify(raw).slice(0, 400));
       return getMockTokens();
     }
+    console.log("[MCP] getTopTokens: returning LIVE data,", tokens.length, "tokens");
     return tokens;
   } catch (err) {
-    console.error("[MCP] getTopTokens failed:", err);
+    console.error("[MCP] getTopTokens failed, falling back to MOCK data:", err);
     return getMockTokens();
   }
 }
@@ -183,9 +208,10 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
       base.upcomingMatch = normalizeMatch(matchData.value);
     }
 
+    console.log("[MCP] getTokenDetail:", detailTool ? "LIVE" : "MOCK", "detail for", tokenId);
     return base;
   } catch (err) {
-    console.error("[MCP] getTokenDetail failed:", err);
+    console.error("[MCP] getTokenDetail failed, falling back to MOCK data:", err);
     return getMockTokenDetail(tokenId);
   }
 }
@@ -201,9 +227,13 @@ export async function getWeeklyMovers(): Promise<FanToken[]> {
 
     const raw = await callTool(toolName, { period: "7d" });
     const tokens = normalizeTokenList(raw);
-    return tokens.length > 0 ? tokens : getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
+    if (tokens.length > 0) {
+      console.log("[MCP] getWeeklyMovers: returning LIVE data,", tokens.length, "tokens");
+      return tokens;
+    }
+    return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
   } catch (err) {
-    console.error("[MCP] getWeeklyMovers failed:", err);
+    console.error("[MCP] getWeeklyMovers failed, falling back to MOCK data:", err);
     return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
   }
 }
