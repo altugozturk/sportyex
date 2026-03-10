@@ -35,18 +35,24 @@ async function getClient(): Promise<Client> {
   const url = new URL(MCP_URL);
   console.log("[MCP] Connecting to:", url.toString());
 
-  const headers: Record<string, string> = API_KEY
-    ? { Authorization: `Bearer ${API_KEY}` }
-    : {};
+  // Only pass requestInit when API key is set — the debug branch proved
+  // that passing no options works reliably. eventSourceInit does NOT
+  // support a `headers` property (only withCredentials + fetch).
+  const transport = API_KEY
+    ? new SSEClientTransport(url, {
+        requestInit: { headers: { Authorization: `Bearer ${API_KEY}` } },
+      })
+    : new SSEClientTransport(url);
 
-  const transport = new SSEClientTransport(url, {
-    requestInit: { headers },
-    eventSourceInit: { headers } as EventSourceInit,
-  });
   const client = new Client({ name: "sportyex", version: "1.0.0" });
 
   try {
-    await client.connect(transport);
+    await Promise.race([
+      client.connect(transport),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("MCP connection timed out (8s)")), 8000)
+      ),
+    ]);
   } catch (err) {
     console.error("[MCP] Connection failed:", err);
     throw new Error(`MCP connection failed: ${err instanceof Error ? err.message : String(err)}`);
