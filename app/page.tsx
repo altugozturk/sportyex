@@ -1,15 +1,34 @@
-import { getTopTokens } from "@/lib/mcp";
+"use client";
+import { useEffect, useState } from "react";
+import { FanToken } from "@/lib/types";
 import TokenCard from "@/components/TokenCard";
 
-export const dynamic = 'force-dynamic';
+export default function HomePage() {
+  const [tokens, setTokens] = useState<FanToken[]>([]);
+  const [loading, setLoading] = useState(true);
 
-export default async function HomePage() {
-  const tokens = await getTopTokens();
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/tokens");
+        const data = await res.json();
+        if (Array.isArray(data)) setTokens(data);
+      } catch {
+        // silently fall back to empty list; API returns mock data on its own failures
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+    const interval = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const sorted = [...tokens].sort((a, b) => b.signalScore - a.signalScore);
 
-  const hotCount      = sorted.filter((t) => t.signalLevel === "HOT").length;
-  const bullishCount  = sorted.filter((t) => t.signalLevel === "BULLISH").length;
-  const warningCount  = sorted.filter((t) => t.signalLevel === "WARNING").length;
+  const hotCount     = sorted.filter((t) => t.signalLevel === "HOT").length;
+  const bullishCount = sorted.filter((t) => t.signalLevel === "BULLISH").length;
+  const warningCount = sorted.filter((t) => t.signalLevel === "WARNING").length;
 
   const today = new Date().toLocaleDateString("en-GB", {
     weekday: "short", day: "numeric", month: "short",
@@ -107,9 +126,34 @@ export default async function HomePage() {
         className="rounded-b-lg overflow-hidden"
         style={{ background: "var(--card)", border: "1px solid var(--card-border)", borderTop: "none" }}
       >
-        {sorted.map((token, i) => (
-          <TokenCard key={token.id} token={token} rank={i + 1} />
-        ))}
+        {loading ? (
+          // Loading skeleton rows
+          Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2.5 px-3 py-2.5"
+              style={{ borderBottom: "1px solid var(--card-border)", opacity: 0.4 }}
+            >
+              <span className="w-5 shrink-0" />
+              <div
+                className="shrink-0 rounded-full"
+                style={{ width: 30, height: 30, background: "var(--border-strong)" }}
+              />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3 rounded" style={{ background: "var(--border-strong)", width: "40%" }} />
+                <div className="h-2 rounded" style={{ background: "var(--border-strong)", width: "25%" }} />
+              </div>
+              <div className="shrink-0 text-right space-y-1.5">
+                <div className="h-3 rounded" style={{ background: "var(--border-strong)", width: 60 }} />
+                <div className="h-2 rounded" style={{ background: "var(--border-strong)", width: 40 }} />
+              </div>
+            </div>
+          ))
+        ) : (
+          sorted.map((token, i) => (
+            <TokenCard key={token.id} token={token} rank={i + 1} />
+          ))
+        )}
       </div>
 
       <p
