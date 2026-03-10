@@ -4,6 +4,7 @@
  * All MCP calls happen here — never on the client.
  */
 
+import { connection } from "next/server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { FanToken, TokenDetail, SignalLevel, WhaleAlert, UpcomingMatch } from "./types";
@@ -14,6 +15,10 @@ let _client: Client | null = null;
 let _toolNames: string[] = [];
 
 async function getClient(): Promise<Client> {
+  // Ensure this always runs in a dynamic (request-time) context so Next.js
+  // never throws DynamicServerError when the MCP SDK makes no-cache SSE fetches.
+  await connection();
+
   if (_client) return _client;
 
   const transport = new SSEClientTransport(new URL(MCP_URL));
