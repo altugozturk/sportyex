@@ -6,6 +6,7 @@ import SignalRing from "@/components/SignalRing";
 import SignalBreakdown from "@/components/SignalBreakdown";
 import EvidenceCard from "@/components/EvidenceCard";
 import CrestIcon from "@/components/CrestIcon";
+import MatchBadge from "@/components/MatchBadge";
 import ShareButton from "@/components/ShareButton";
 import { TrendingUp, TrendingDown, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -37,16 +38,20 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
       {/* Back */}
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-sm mb-6 transition-opacity hover:opacity-70"
+        className="inline-flex items-center gap-1.5 text-[11px] mb-3 transition-opacity hover:opacity-70"
         style={{ color: "rgba(255,255,255,0.45)" }}
       >
-        <ArrowLeft size={14} /> All tokens
+        <ArrowLeft size={13} /> All tokens
       </Link>
 
       {/* Hero */}
       <div
-        className="rounded-2xl p-6 mb-4"
-        style={{ background: "var(--card)", border: "1px solid var(--card-border)" }}
+        className="rounded-xl p-4 mb-4"
+        style={{
+          background: "var(--card)",
+          border: "1px solid var(--card-border)",
+          borderTop: identity ? `2px solid ${identity.primary}` : "1px solid var(--card-border)",
+        }}
       >
         <div className="flex items-start justify-between gap-4">
           {/* Token identity */}
@@ -72,7 +77,10 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
                 </div>
               </div>
             </div>
-            <SignalBadge level={token.signalLevel} />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <SignalBadge level={token.signalLevel} />
+              {token.upcomingMatch && <MatchBadge match={token.upcomingMatch} />}
+            </div>
           </div>
 
           {/* Signal ring */}
@@ -80,15 +88,15 @@ export default async function TokenPage({ params }: { params: Promise<{ slug: st
         </div>
 
         {/* Price */}
-        <div className="mt-5 pt-4 border-t" style={{ borderColor: "var(--card-border)" }}>
-          <p className="text-3xl font-black tabular-nums">${token.price.toFixed(2)}</p>
+        <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--card-border)" }}>
+          <p className="text-2xl font-black tabular-nums">${token.price.toFixed(2)}</p>
           <p className="flex items-center gap-1 mt-1 text-sm font-semibold tabular-nums" style={{ color: priceColor }}>
             {positive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
             {positive ? "+" : ""}{token.priceChange24h.toFixed(2)}% today
           </p>
           {token.volume24h && (
             <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>
-              Vol: ${(token.volume24h / 1_000).toFixed(0)}k · {token.exchange ?? "Chiliz"}
+              Vol: ${(token.volume24h / 1_000).toFixed(0)}k · {token.exchange ?? "FanX"}
             </p>
           )}
         </div>

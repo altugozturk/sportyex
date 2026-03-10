@@ -58,22 +58,23 @@ export async function getAvailableTools(): Promise<string[]> {
   return _toolNames;
 }
 
+// ─── Tool name matching ──────────────────────────────────────────────────────
+// Keyword-in-name matching: broader than exact list for 67+ tool servers
+
+function findTool(available: string[], keywords: string[]): string | undefined {
+  return available.find((name) =>
+    keywords.some((kw) => name.toLowerCase().includes(kw))
+  );
+}
+
 // ─── Token List ─────────────────────────────────────────────────────────────
 
 export async function getTopTokens(): Promise<FanToken[]> {
   try {
-    // Try common tool name patterns for listing fan tokens
-    const toolCandidates = [
-      "get_fan_tokens",
-      "list_fan_tokens",
-      "get_tokens",
-      "fan_tokens_list",
-      "get_market_data",
-      "get_all_tokens",
-    ];
-
     const available = await getAvailableTools();
-    const toolName = toolCandidates.find((t) => available.includes(t));
+    const toolName = findTool(available, [
+      "fan_token", "token_list", "get_tokens", "market_data", "all_token", "list_token",
+    ]);
 
     if (!toolName) {
       console.warn("[MCP] No token list tool found, available:", available);
@@ -92,31 +93,17 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
   try {
     const available = await getAvailableTools();
 
-    const detailCandidates = [
-      "get_token_detail",
-      "get_fan_token",
-      "token_detail",
-      "get_token_info",
-    ];
-    const detailTool = detailCandidates.find((t) => available.includes(t));
+    const detailTool = findTool(available, [
+      "token_detail", "token_info", "get_fan_token", "token_data",
+    ]);
 
-    const whaleCandidates = [
-      "get_whale_activity",
-      "whale_activity",
-      "get_whale_flows",
-      "whale_flows",
-      "get_large_transfers",
-    ];
-    const whaleTool = whaleCandidates.find((t) => available.includes(t));
+    const whaleTool = findTool(available, [
+      "whale", "large_transfer", "big_wallet", "flow",
+    ]);
 
-    const matchCandidates = [
-      "get_upcoming_matches",
-      "upcoming_matches",
-      "get_sports_calendar",
-      "sports_calendar",
-      "get_match_context",
-    ];
-    const matchTool = matchCandidates.find((t) => available.includes(t));
+    const matchTool = findTool(available, [
+      "match", "fixture", "calendar", "schedule", "game", "kickoff",
+    ]);
 
     const [detail, whaleData, matchData] = await Promise.allSettled([
       detailTool ? callTool(detailTool, { token: tokenId, symbol: tokenId }) : Promise.resolve(null),
@@ -145,14 +132,9 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
 export async function getWeeklyMovers(): Promise<FanToken[]> {
   try {
     const available = await getAvailableTools();
-    const candidates = [
-      "get_weekly_movers",
-      "weekly_movers",
-      "get_top_performers",
-      "get_price_performance",
-      "top_movers",
-    ];
-    const toolName = candidates.find((t) => available.includes(t));
+    const toolName = findTool(available, [
+      "weekly", "mover", "top_performer", "price_change", "gainers",
+    ]);
     if (!toolName) return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
 
     const raw = await callTool(toolName, { period: "7d" });
@@ -207,7 +189,7 @@ function normalizeTokenDetail(raw: any, fallbackId: string): TokenDetail {
     ...base,
     topHolders: raw.top_holders ?? raw.topHolders,
     circulatingSupply: raw.circulating_supply ?? raw.circulatingSupply,
-    exchange: raw.exchange ?? raw.dex ?? "Chiliz",
+    exchange: raw.exchange ?? raw.dex ?? "FanX",
   };
 }
 
@@ -395,9 +377,16 @@ export function getMockTokens(): FanToken[] {
       price: 1.62,
       priceChange24h: 4.9,
       priceChange7d: 7.7,
-      signalScore: 67,
-      signalLevel: "BULLISH",
+      signalScore: 78,
+      signalLevel: "HOT",
       sentimentScore: 63,
+      upcomingMatch: {
+        homeTeam: "Galatasaray",
+        awayTeam: "Bayern Munich",
+        competition: "UCL",
+        kickoffAt: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
+        hoursUntil: 6,
+      },
     },
   ];
 }
@@ -408,6 +397,6 @@ function getMockTokenDetail(tokenId: string): TokenDetail {
     ...base,
     topHolders: 1420,
     circulatingSupply: 20_000_000,
-    exchange: "Chiliz Exchange",
+    exchange: "FanX",
   };
 }

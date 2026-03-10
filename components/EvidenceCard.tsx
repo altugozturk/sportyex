@@ -40,7 +40,7 @@ function buildEvidenceItems(token: TokenDetail): EvidenceItem[] {
       ? `$${(token.volume24h / 1_000_000).toFixed(2)}M`
       : `$${(token.volume24h / 1_000).toFixed(0)}k`
     : null;
-  const exchange = token.exchange ?? "Chiliz";
+  const exchange = token.exchange ?? "FanX";
   items.push({
     icon: <BarChart2 size={13} />,
     title: "Market Data",
@@ -77,7 +77,7 @@ function buildEvidenceItems(token: TokenDetail): EvidenceItem[] {
 export default function EvidenceCard({ token }: { token: TokenDetail }) {
   const items = buildEvidenceItems(token);
   const updatedAt = new Date().toUTCString();
-  const exchange = token.exchange ?? "Chiliz";
+  const exchange = token.exchange ?? "FanX";
 
   return (
     <div
@@ -176,7 +176,7 @@ export default function EvidenceCard({ token }: { token: TokenDetail }) {
         </a>
 
         <a
-          href={`https://www.chiliz.com/trade/`}
+          href="https://fanex.io/"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded transition-opacity hover:opacity-80"
