@@ -149,6 +149,13 @@ export default function HomePage() {
               </div>
             </div>
           ))
+        ) : sorted.length === 0 ? (
+          <div
+            className="px-4 py-8 text-center"
+            style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11 }}
+          >
+            Unable to load token data — please try again shortly.
+          </div>
         ) : (
           sorted.map((token, i) => (
             <TokenCard key={token.id} token={token} rank={i + 1} />
