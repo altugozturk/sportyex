@@ -1,3 +1,4 @@
+"use client";
 import Link from "next/link";
 import { FanToken } from "@/lib/types";
 import { getClubIdentity } from "@/lib/crests";
