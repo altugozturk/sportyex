@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <clipPath id="c"><circle cx="32" cy="32" r="32"/></clipPath>
+  <circle cx="32" cy="32" r="32" fill="#FB090B"/>
+  <rect x="0" y="0" width="64" height="64" fill="#FB090B" clip-path="url(#c)"/>
+  <rect x="10" y="0" width="10" height="64" fill="#000000" clip-path="url(#c)"/>
+  <rect x="30" y="0" width="10" height="64" fill="#000000" clip-path="url(#c)"/>
+  <rect x="50" y="0" width="10" height="64" fill="#000000" clip-path="url(#c)"/>
+  <text x="32" y="36" font-family="Arial Black,Arial,sans-serif" font-size="13" font-weight="900" fill="white" text-anchor="middle" letter-spacing="0.5">ACM</text>
+</svg>

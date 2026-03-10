@@ -9,35 +9,74 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { FanToken, TokenDetail, SignalLevel, WhaleAlert, UpcomingMatch } from "./types";
 
 const MCP_URL = process.env.FAN_TOKEN_MCP_URL || "https://mcp-production-f681.up.railway.app/sse";
+const API_KEY = process.env.FAN_TOKEN_INTEL_API_KEY;
+const MAX_CONNECTION_AGE_MS = 4 * 60 * 1000; // 4 minutes — under ISR windows
 
 let _client: Client | null = null;
 let _toolNames: string[] = [];
+let _connectedAt = 0;
+
+function resetClient() {
+  _client = null;
+  _toolNames = [];
+  _connectedAt = 0;
+}
 
 async function getClient(): Promise<Client> {
-  if (_client) return _client;
+  // Return cached client if still fresh
+  if (_client && Date.now() - _connectedAt < MAX_CONNECTION_AGE_MS) {
+    return _client;
+  }
+  if (_client) {
+    console.log("[MCP] Connection stale, reconnecting...");
+    resetClient();
+  }
 
-  const transport = new SSEClientTransport(new URL(MCP_URL));
+  const url = new URL(MCP_URL);
+  console.log("[MCP] Connecting to:", url.toString());
+
+  // Only pass requestInit when API key is set — the debug branch proved
+  // that passing no options works reliably. eventSourceInit does NOT
+  // support a `headers` property (only withCredentials + fetch).
+  const transport = API_KEY
+    ? new SSEClientTransport(url, {
+        requestInit: { headers: { Authorization: `Bearer ${API_KEY}` } },
+      })
+    : new SSEClientTransport(url);
+
   const client = new Client({ name: "sportyex", version: "1.0.0" });
 
-  await client.connect(transport);
+  try {
+    await Promise.race([
+      client.connect(transport),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("MCP connection timed out (8s)")), 8000)
+      ),
+    ]);
+  } catch (err) {
+    console.error("[MCP] Connection failed:", err);
+    throw new Error(`MCP connection failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  try {
+    const toolsResult = await client.listTools();
+    _toolNames = toolsResult.tools.map((t) => t.name);
+    console.log("[MCP] Connected. Available tools:", _toolNames);
+  } catch (err) {
+    console.error("[MCP] listTools failed:", err);
+    throw new Error(`MCP listTools failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   _client = client;
-
-  // Cache available tool names
-  const toolsResult = await client.listTools();
-  _toolNames = toolsResult.tools.map((t) => t.name);
-  console.log("[MCP] Connected. Available tools:", _toolNames);
-
+  _connectedAt = Date.now();
   return client;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function callTool(name: string, args: Record<string, any> = {}): Promise<any> {
-  const client = await getClient();
-  const result = await client.callTool({ name, arguments: args });
+function parseToolResult(result: any): any {
   if (result.isError) {
-    throw new Error(`MCP tool error [${name}]: ${JSON.stringify(result.content)}`);
+    throw new Error(`MCP tool error: ${JSON.stringify(result.content)}`);
   }
-  // MCP returns content array; parse text content
   const content = result.content as Array<{ type: string; text?: string }>;
   const text = content.find((c) => c.type === "text")?.text;
   if (!text) return null;
@@ -48,37 +87,77 @@ async function callTool(name: string, args: Record<string, any> = {}): Promise<a
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function callTool(name: string, args: Record<string, any> = {}): Promise<any> {
+  try {
+    const client = await getClient();
+    const result = await client.callTool({ name, arguments: args });
+    return parseToolResult(result);
+  } catch (err) {
+    console.warn(`[MCP] callTool("${name}") failed, resetting client and retrying:`, err);
+    resetClient();
+    const client = await getClient();
+    const result = await client.callTool({ name, arguments: args });
+    return parseToolResult(result);
+  }
+}
+
 export async function getAvailableTools(): Promise<string[]> {
   await getClient();
   return _toolNames;
 }
 
+/** Exposed for the debug endpoint — calls any tool and returns raw response */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function callToolDebug(name: string, args: Record<string, any> = {}): Promise<any> {
+  return callTool(name, args);
+}
+
+// ─── Tool name matching ──────────────────────────────────────────────────────
+// Keyword-in-name matching: broader than exact list for 67+ tool servers
+
+function findTool(available: string[], keywords: string[]): string | undefined {
+  return available.find((name) =>
+    keywords.some((kw) => name.toLowerCase().includes(kw))
+  );
+}
+
+// Known fan token symbols — used as arguments when a tool requires a token list
+const KNOWN_SYMBOLS = ["PSG", "BAR", "JUV", "ACM", "ATM", "CITY", "INTER", "GAL"];
+
 // ─── Token List ─────────────────────────────────────────────────────────────
 
 export async function getTopTokens(): Promise<FanToken[]> {
   try {
-    // Try common tool name patterns for listing fan tokens
-    const toolCandidates = [
-      "get_fan_tokens",
-      "list_fan_tokens",
-      "get_tokens",
-      "fan_tokens_list",
-      "get_market_data",
-      "get_all_tokens",
-    ];
-
     const available = await getAvailableTools();
-    const toolName = toolCandidates.find((t) => available.includes(t));
+    const toolName = findTool(available, [
+      "signals_active",                                               // try first — returns all active tokens without args
+      "realtime_prices", "daily_brief", "briefing", "market_regime",
+      "fan_token", "token_list", "get_tokens", "market_data", "all_token", "list_token",
+    ]);
 
     if (!toolName) {
       console.warn("[MCP] No token list tool found, available:", available);
       return getMockTokens();
     }
 
-    const raw = await callTool(toolName);
-    return normalizeTokenList(raw);
+    // Pass known symbols in every possible parameter name the tool might expect
+    const raw = await callTool(toolName, {
+      symbols: KNOWN_SYMBOLS,
+      tokens: KNOWN_SYMBOLS,
+      symbol_list: KNOWN_SYMBOLS,
+      token_ids: KNOWN_SYMBOLS,
+    });
+    console.log("[MCP] getTopTokens raw (first 800 chars):", JSON.stringify(raw).slice(0, 800));
+    const tokens = normalizeTokenList(raw);
+    if (tokens.length === 0) {
+      console.warn("[MCP] getTopTokens normalised to empty list — falling back to MOCK data. Raw was:", JSON.stringify(raw).slice(0, 400));
+      return getMockTokens();
+    }
+    console.log("[MCP] getTopTokens: returning LIVE data,", tokens.length, "tokens");
+    return tokens;
   } catch (err) {
-    console.error("[MCP] getTopTokens failed:", err);
+    console.error("[MCP] getTopTokens failed, falling back to MOCK data:", err);
     return getMockTokens();
   }
 }
@@ -87,31 +166,20 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
   try {
     const available = await getAvailableTools();
 
-    const detailCandidates = [
-      "get_token_detail",
-      "get_fan_token",
-      "token_detail",
-      "get_token_info",
-    ];
-    const detailTool = detailCandidates.find((t) => available.includes(t));
+    const detailTool = findTool(available, [
+      "token_context", "analytics", "signals_history", "signal_bundle",
+      "token_detail", "token_info", "get_fan_token", "token_data",
+    ]);
 
-    const whaleCandidates = [
-      "get_whale_activity",
-      "whale_activity",
-      "get_whale_flows",
-      "whale_flows",
-      "get_large_transfers",
-    ];
-    const whaleTool = whaleCandidates.find((t) => available.includes(t));
+    const whaleTool = findTool(available, [
+      "whale", "large_transfer", "big_wallet", "flow",
+    ]);
 
-    const matchCandidates = [
-      "get_upcoming_matches",
-      "upcoming_matches",
-      "get_sports_calendar",
-      "sports_calendar",
-      "get_match_context",
-    ];
-    const matchTool = matchCandidates.find((t) => available.includes(t));
+    const matchTool = findTool(available, [
+      "match", "fixture", "calendar", "schedule", "game", "kickoff",
+    ]);
+
+    console.log(`[MCP] getTokenDetail(${tokenId}) tools — detail:${detailTool} whale:${whaleTool} match:${matchTool}`);
 
     const [detail, whaleData, matchData] = await Promise.allSettled([
       detailTool ? callTool(detailTool, { token: tokenId, symbol: tokenId }) : Promise.resolve(null),
@@ -119,9 +187,25 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
       matchTool ? callTool(matchTool, { token: tokenId, team: tokenId }) : Promise.resolve(null),
     ]);
 
-    const base = detail.status === "fulfilled" && detail.value
-      ? normalizeTokenDetail(detail.value, tokenId)
-      : getMockTokenDetail(tokenId);
+    if (detail.status === "fulfilled" && detail.value) {
+      console.log(`[MCP] detail raw (${tokenId}, first 600):`, JSON.stringify(detail.value).slice(0, 600));
+    }
+    if (whaleData.status === "fulfilled" && whaleData.value) {
+      console.log(`[MCP] whale raw (${tokenId}, first 400):`, JSON.stringify(whaleData.value).slice(0, 400));
+    }
+
+    if (detail.status !== "fulfilled" || !detail.value) {
+      console.warn(`[MCP] No detail data for ${tokenId} — falling back to mock`);
+      return getMockTokenDetail(tokenId);
+    }
+
+    const base = normalizeTokenDetail(detail.value, tokenId);
+
+    // If core fields didn't map (price=0, default score), fall back to mock
+    if (base.price === 0 && base.signalScore === 50) {
+      console.warn(`[MCP] normalizeTokenDetail produced defaults for ${tokenId} — field mapping wrong. Raw:`, JSON.stringify(detail.value).slice(0, 600));
+      return getMockTokenDetail(tokenId);
+    }
 
     if (whaleData.status === "fulfilled" && whaleData.value) {
       base.whaleAlert = normalizeWhaleAlert(whaleData.value);
@@ -130,9 +214,10 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
       base.upcomingMatch = normalizeMatch(matchData.value);
     }
 
+    console.log("[MCP] getTokenDetail:", detailTool ? "LIVE" : "MOCK", "detail for", tokenId);
     return base;
   } catch (err) {
-    console.error("[MCP] getTokenDetail failed:", err);
+    console.error("[MCP] getTokenDetail failed, falling back to MOCK data:", err);
     return getMockTokenDetail(tokenId);
   }
 }
@@ -140,91 +225,119 @@ export async function getTokenDetail(tokenId: string): Promise<TokenDetail | nul
 export async function getWeeklyMovers(): Promise<FanToken[]> {
   try {
     const available = await getAvailableTools();
-    const candidates = [
-      "get_weekly_movers",
-      "weekly_movers",
-      "get_top_performers",
-      "get_price_performance",
-      "top_movers",
-    ];
-    const toolName = candidates.find((t) => available.includes(t));
+    const toolName = findTool(available, [
+      "realtime_prices", "accumulation_signals", "signals_active",
+      "weekly", "mover", "top_performer", "price_change", "gainers",
+    ]);
     if (!toolName) return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
 
     const raw = await callTool(toolName, { period: "7d" });
-    return normalizeTokenList(raw);
+    const tokens = normalizeTokenList(raw);
+    if (tokens.length > 0) {
+      console.log("[MCP] getWeeklyMovers: returning LIVE data,", tokens.length, "tokens");
+      return tokens;
+    }
+    return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
   } catch (err) {
-    console.error("[MCP] getWeeklyMovers failed:", err);
+    console.error("[MCP] getWeeklyMovers failed, falling back to MOCK data:", err);
     return getMockTokens().sort((a, b) => b.priceChange7d - a.priceChange7d);
   }
 }
 
 // ─── Normalizers ────────────────────────────────────────────────────────────
 // These map raw MCP response shapes to our clean types.
-// Adjust field names once actual MCP schema is confirmed.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeTokenList(raw: any): FanToken[] {
-  if (!raw) return getMockTokens();
-  const list = Array.isArray(raw) ? raw : raw.tokens || raw.data || raw.results || [];
-  if (!list.length) return getMockTokens();
+  if (!raw) return [];
+  // Try every common wrapper field an API might use
+  const list = Array.isArray(raw) ? raw
+    : raw.tokens ?? raw.data ?? raw.results ?? raw.prices
+    ?? raw.market_data ?? raw.fan_tokens ?? raw.market
+    ?? raw.items ?? raw.records ?? [];
+  if (!Array.isArray(list) || list.length === 0) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return list.map((t: any) => normalizeToken(t)).filter(Boolean);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeToken(t: any): FanToken {
-  const change24h = parseFloat(t.price_change_24h ?? t.priceChange24h ?? t.change24h ?? 0);
-  const score = parseInt(t.signal_score ?? t.signalScore ?? t.score ?? "50");
+  const change24h = parseFloat(
+    t.price_change_24h ?? t.priceChange24h ?? t.change_24h ?? t.change24h
+    ?? t.daily_change ?? t.change ?? 0
+  );
+  const rawScore =
+    t.signal_score ?? t.signalScore ?? t.score ?? t.momentum_score
+    ?? t.trend_score ?? t.strength ?? t.rating ?? "50";
+  const score = parseInt(String(rawScore));
+  const price = parseFloat(
+    t.price ?? t.current_price ?? t.last_price ?? t.latest_price
+    ?? t.price_usd ?? t.value ?? 0
+  );
   return {
-    id: t.symbol ?? t.id ?? t.token_id ?? "UNKNOWN",
-    symbol: t.symbol ?? t.ticker ?? "?",
+    id: t.symbol ?? t.id ?? t.token_id ?? t.token ?? "UNKNOWN",
+    symbol: t.symbol ?? t.ticker ?? t.token ?? "?",
     name: t.name ?? t.token_name ?? t.symbol ?? "Unknown Token",
-    team: t.team ?? t.club ?? t.symbol ?? "Unknown",
+    team: t.team ?? t.club ?? t.club_name ?? t.symbol ?? "Unknown",
     sport: t.sport ?? "football",
-    price: parseFloat(t.price ?? t.current_price ?? 0),
+    price,
     priceChange24h: change24h,
-    priceChange7d: parseFloat(t.price_change_7d ?? t.priceChange7d ?? t.change7d ?? 0),
+    priceChange7d: parseFloat(
+      t.price_change_7d ?? t.priceChange7d ?? t.change_7d ?? t.change7d
+      ?? t.weekly_change ?? 0
+    ),
     marketCap: t.market_cap ?? t.marketCap,
-    volume24h: t.volume_24h ?? t.volume24h,
+    volume24h: t.volume_24h ?? t.volume24h ?? t.volume,
     signalScore: isNaN(score) ? 50 : score,
     signalLevel: scoreToLevel(isNaN(score) ? 50 : score, change24h),
-    logoUrl: t.logo_url ?? t.logoUrl ?? t.image ?? undefined,
+    logoUrl: t.logo_url ?? t.logoUrl ?? t.image ?? t.logo ?? undefined,
     upcomingMatch: t.upcoming_match ? normalizeMatch(t.upcoming_match) : undefined,
     whaleAlert: t.whale_alert ? normalizeWhaleAlert(t.whale_alert) : undefined,
-    sentimentScore: t.sentiment_score ?? t.bullish_percent,
+    sentimentScore: t.sentiment_score ?? t.bullish_percent ?? t.bullish_percentage,
   };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeTokenDetail(raw: any, fallbackId: string): TokenDetail {
-  const base = normalizeToken({ ...raw, symbol: raw.symbol ?? fallbackId });
+  // Unwrap array or common nested wrappers
+  const t = Array.isArray(raw) ? raw[0]
+    : raw?.data ?? raw?.token ?? raw?.result ?? raw?.bundle
+    ?? raw?.details ?? raw?.token_data ?? raw?.info ?? raw;
+  const base = normalizeToken({ ...t, symbol: t?.symbol ?? fallbackId });
   return {
     ...base,
-    topHolders: raw.top_holders ?? raw.topHolders,
-    circulatingSupply: raw.circulating_supply ?? raw.circulatingSupply,
-    exchange: raw.exchange ?? raw.dex ?? "Chiliz",
+    topHolders: t.top_holders ?? t.topHolders ?? t.holder_count,
+    circulatingSupply: t.circulating_supply ?? t.circulatingSupply ?? t.supply,
+    exchange: t.exchange ?? t.dex ?? t.platform ?? "FanX",
   };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeWhaleAlert(raw: any): WhaleAlert {
+  // Unwrap array or nested containers
+  const d = Array.isArray(raw) ? raw[0]
+    : raw?.flows?.[0] ?? raw?.whale_data ?? raw?.data ?? raw?.alert ?? raw;
   return {
-    description: raw.description ?? raw.summary ?? `Large wallet activity detected`,
-    count: parseInt(raw.count ?? raw.wallet_count ?? 1),
-    totalTokens: parseFloat(raw.total_tokens ?? raw.amount ?? 0),
-    direction: raw.direction ?? raw.side ?? "mixed",
-    timeframeHours: parseInt(raw.timeframe_hours ?? raw.hours ?? 24),
+    description: d.description ?? d.summary ?? d.message ?? "Large wallet activity detected",
+    count: parseInt(d.count ?? d.wallet_count ?? d.wallets ?? d.num_wallets ?? 1),
+    totalTokens: parseFloat(d.total_tokens ?? d.amount ?? d.volume ?? d.token_amount ?? 0),
+    direction: d.direction ?? d.side ?? d.flow_direction ?? d.type ?? "mixed",
+    timeframeHours: parseInt(d.timeframe_hours ?? d.hours ?? d.window_hours ?? d.period_hours ?? 24),
   };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeMatch(raw: any): UpcomingMatch {
-  const kickoff = raw.kickoff_at ?? raw.kickoffAt ?? raw.date ?? raw.start_time ?? new Date().toISOString();
+  const d = Array.isArray(raw) ? raw[0]
+    : raw?.match ?? raw?.fixture ?? raw?.data ?? raw?.game ?? raw;
+  const kickoff =
+    d.kickoff_at ?? d.kickoffAt ?? d.kickoff ?? d.date ?? d.start_time
+    ?? d.match_date ?? d.datetime ?? new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   const hours = Math.max(0, Math.round((new Date(kickoff).getTime() - Date.now()) / 3_600_000));
   return {
-    homeTeam: raw.home_team ?? raw.homeTeam ?? raw.home ?? "TBD",
-    awayTeam: raw.away_team ?? raw.awayTeam ?? raw.away ?? "TBD",
-    competition: raw.competition ?? raw.league ?? raw.tournament ?? "League",
+    homeTeam: d.home_team ?? d.homeTeam ?? d.home ?? d.home_club ?? "TBD",
+    awayTeam: d.away_team ?? d.awayTeam ?? d.away ?? d.away_club ?? "TBD",
+    competition: d.competition ?? d.league ?? d.tournament ?? d.cup ?? "League",
     kickoffAt: kickoff,
     hoursUntil: hours,
   };
@@ -237,7 +350,7 @@ function scoreToLevel(score: number, change24h: number): SignalLevel {
   return "QUIET";
 }
 
-// ─── Mock Data (fallback when MCP is unavailable) ──────────────────────────
+// ─── Mock Data (kept for local dev / tests only — not used at runtime) ──────
 
 export function getMockTokens(): FanToken[] {
   return [
@@ -390,19 +503,26 @@ export function getMockTokens(): FanToken[] {
       price: 1.62,
       priceChange24h: 4.9,
       priceChange7d: 7.7,
-      signalScore: 67,
-      signalLevel: "BULLISH",
+      signalScore: 78,
+      signalLevel: "HOT",
       sentimentScore: 63,
+      upcomingMatch: {
+        homeTeam: "Galatasaray",
+        awayTeam: "Bayern Munich",
+        competition: "UCL",
+        kickoffAt: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
+        hoursUntil: 6,
+      },
     },
   ];
 }
 
-function getMockTokenDetail(tokenId: string): TokenDetail {
+export function getMockTokenDetail(tokenId: string): TokenDetail {
   const base = getMockTokens().find((t) => t.id === tokenId.toUpperCase()) ?? getMockTokens()[0];
   return {
     ...base,
     topHolders: 1420,
     circulatingSupply: 20_000_000,
-    exchange: "Chiliz Exchange",
+    exchange: "FanX",
   };
 }

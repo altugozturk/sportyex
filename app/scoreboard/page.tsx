@@ -1,10 +1,11 @@
 import { getTopTokens, getWeeklyMovers } from "@/lib/mcp";
 import Link from "next/link";
 import SignalBadge from "@/components/SignalBadge";
+import CrestIcon from "@/components/CrestIcon";
 import { TrendingUp, TrendingDown, Trophy, Waves } from "lucide-react";
 import type { Metadata } from "next";
 
-export const revalidate = 600;
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: "Weekly Scoreboard | Sportyex",
@@ -57,18 +58,13 @@ export default async function ScoreboardPage() {
             <Link
               key={token.id}
               href={`/token/${token.id.toLowerCase()}`}
-              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5"
+              className="flex items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-white/5"
               style={{ borderBottom: i < sorted7d.length - 1 ? "1px solid var(--card-border)" : "none" }}
             >
-              <span className="text-xs font-bold tabular-nums w-5 text-right shrink-0" style={{ color: "rgba(255,255,255,0.25)" }}>
+              <span className="text-[11px] font-bold tabular-nums w-4 text-right shrink-0" style={{ color: "rgba(255,255,255,0.25)" }}>
                 {i + 1}
               </span>
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0"
-                style={{ background: "rgba(255,255,255,0.08)" }}
-              >
-                {token.symbol.slice(0, 3)}
-              </div>
+              <CrestIcon tokenId={token.id} symbol={token.symbol} size={32} />
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm truncate">{token.team}</p>
                 <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{token.symbol}</p>
@@ -97,10 +93,10 @@ export default async function ScoreboardPage() {
               <Link
                 key={token.id}
                 href={`/token/${token.id.toLowerCase()}`}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors hover:border-white/20"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-colors hover:border-white/20"
                 style={{ background: "var(--card)", border: "1px solid var(--card-border)" }}
               >
-                <span className="text-base">🐋</span>
+                <CrestIcon tokenId={token.id} symbol={token.symbol} size={32} />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm">{token.team}</p>
                   <p className="text-xs truncate" style={{ color: "rgba(255,255,255,0.35)" }}>
@@ -125,15 +121,10 @@ export default async function ScoreboardPage() {
             <Link
               key={token.id}
               href={`/token/${token.id.toLowerCase()}`}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors hover:border-white/20"
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-colors hover:border-white/20"
               style={{ background: "var(--card)", border: "1px solid var(--card-border)" }}
             >
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0"
-                style={{ background: "rgba(255,255,255,0.08)" }}
-              >
-                {token.symbol.slice(0, 3)}
-              </div>
+              <CrestIcon tokenId={token.id} symbol={token.symbol} size={32} />
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm">{token.team}</p>
               </div>
